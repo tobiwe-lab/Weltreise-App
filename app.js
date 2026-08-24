@@ -5,6 +5,10 @@
 
 const STORAGE_KEY = 'weltreiseData';
 
+// Zeitstempel des letzten Code-Updates – wird von Claude bei jeder Änderung
+// von Hand angepasst, damit auf der Übersicht sichtbar ist, welche Version läuft.
+const APP_BUILD = '24.08.2026 20:33';
+
 const DEFAULT_PREP = [
   { text: 'Reisepass prüfen (mind. 6 Monate gültig)', category: 'Dokumente' },
   { text: 'Visa für Zielländer klären', category: 'Dokumente' },
@@ -159,6 +163,8 @@ function renderDashboard() {
       </div>
       <input type="file" id="import-file-input" accept="application/json,.json" class="hidden">
     </div>
+
+    <p class="build-info">App-Version vom ${esc(APP_BUILD)}</p>
   `;
 
   document.getElementById('export-btn').addEventListener('click', exportData);
