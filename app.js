@@ -7,7 +7,39 @@ const STORAGE_KEY = 'weltreiseData';
 
 // Zeitstempel des letzten Code-Updates – wird von Claude bei jeder Änderung
 // von Hand angepasst, damit auf der Übersicht sichtbar ist, welche Version läuft.
-const APP_BUILD = '24.08.2026 20:33';
+const APP_BUILD = '24.08.2026 20:45';
+
+const COUNTRIES_DE = [
+  'Afghanistan', 'Ägypten', 'Albanien', 'Algerien', 'Andorra', 'Angola', 'Antigua und Barbuda',
+  'Äquatorialguinea', 'Argentinien', 'Armenien', 'Aserbaidschan', 'Äthiopien', 'Australien',
+  'Bahamas', 'Bahrain', 'Bangladesch', 'Barbados', 'Belgien', 'Belize', 'Benin', 'Bhutan',
+  'Bolivien', 'Bosnien und Herzegowina', 'Botsuana', 'Brasilien', 'Brunei', 'Bulgarien',
+  'Burkina Faso', 'Burundi', 'Chile', 'China', 'Costa Rica', 'Dänemark', 'Deutschland',
+  'Dominica', 'Dominikanische Republik', 'Dschibuti', 'Ecuador', 'El Salvador', 'Elfenbeinküste',
+  'Eritrea', 'Estland', 'Eswatini', 'Fidschi', 'Finnland', 'Frankreich', 'Gabun', 'Gambia',
+  'Georgien', 'Ghana', 'Grenada', 'Griechenland', 'Guatemala', 'Guinea', 'Guinea-Bissau',
+  'Guyana', 'Haiti', 'Honduras', 'Hongkong', 'Indien', 'Indonesien', 'Irak', 'Iran', 'Irland',
+  'Island', 'Israel', 'Italien', 'Jamaika', 'Japan', 'Jemen', 'Jordanien', 'Kambodscha',
+  'Kamerun', 'Kanada', 'Kap Verde', 'Kasachstan', 'Katar', 'Kenia', 'Kirgisistan', 'Kiribati',
+  'Kolumbien', 'Komoren', 'Kongo (Republik)', 'Kongo (Demokratische Republik)', 'Kosovo',
+  'Kroatien', 'Kuba', 'Kuwait', 'Laos', 'Lesotho', 'Lettland', 'Libanon', 'Liberia', 'Libyen',
+  'Liechtenstein', 'Litauen', 'Luxemburg', 'Macau', 'Madagaskar', 'Malawi', 'Malaysia',
+  'Malediven', 'Mali', 'Malta', 'Marokko', 'Marshallinseln', 'Mauretanien', 'Mauritius',
+  'Mexiko', 'Mikronesien', 'Moldau', 'Monaco', 'Mongolei', 'Montenegro', 'Mosambik', 'Myanmar',
+  'Namibia', 'Nauru', 'Nepal', 'Neuseeland', 'Nicaragua', 'Niederlande', 'Niger', 'Nigeria',
+  'Nordkorea', 'Nordmazedonien', 'Norwegen', 'Oman', 'Österreich', 'Osttimor', 'Pakistan',
+  'Palau', 'Palästina', 'Panama', 'Papua-Neuguinea', 'Paraguay', 'Peru', 'Philippinen', 'Polen',
+  'Portugal', 'Ruanda', 'Rumänien', 'Russland', 'Salomonen', 'Sambia', 'Samoa', 'San Marino',
+  'São Tomé und Príncipe', 'Saudi-Arabien', 'Schweden', 'Schweiz', 'Senegal', 'Serbien',
+  'Seychellen', 'Sierra Leone', 'Simbabwe', 'Singapur', 'Slowakei', 'Slowenien', 'Somalia',
+  'Spanien', 'Sri Lanka', 'St. Kitts und Nevis', 'St. Lucia', 'St. Vincent und die Grenadinen',
+  'Südafrika', 'Sudan', 'Südkorea', 'Südsudan', 'Suriname', 'Syrien', 'Tadschikistan', 'Taiwan',
+  'Tansania', 'Thailand', 'Togo', 'Tonga', 'Trinidad und Tobago', 'Tschad', 'Tschechien',
+  'Tunesien', 'Türkei', 'Turkmenistan', 'Tuvalu', 'Uganda', 'Ukraine', 'Ungarn', 'Uruguay',
+  'Usbekistan', 'Vanuatu', 'Vatikanstadt', 'Venezuela', 'Vereinigte Arabische Emirate',
+  'Vereinigte Staaten', 'Vereinigtes Königreich', 'Vietnam', 'Weißrussland',
+  'Zentralafrikanische Republik', 'Zypern',
+];
 
 const DEFAULT_PREP = [
   { text: 'Reisepass prüfen (mind. 6 Monate gültig)', category: 'Dokumente' },
@@ -286,9 +318,11 @@ function initRouteMap(stops) {
   const map = L.map(container, { scrollWheelZoom: false });
   routeMapInstance = map;
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
-    maxZoom: 18,
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
+    maxZoom: 20,
+    detectRetina: true,
   }).addTo(map);
 
   if (stops.length === 0) {
@@ -515,7 +549,11 @@ function openStopForm(stop) {
   const isEdit = !!stop;
   openModal(`
     <h3>${isEdit ? 'Station bearbeiten' : 'Neue Station'}</h3>
-    <div class="field"><label>Land</label><input id="f-country" value="${isEdit ? esc(stop.country) : ''}" placeholder="z. B. Thailand"></div>
+    <div class="field autocomplete-field">
+      <label>Land</label>
+      <input id="f-country" value="${isEdit ? esc(stop.country) : ''}" placeholder="z. B. Thailand" autocomplete="off">
+      <div id="country-suggestions" class="suggestions-list hidden"></div>
+    </div>
     <div class="field"><label>Ort (optional)</label><input id="f-city" value="${isEdit ? esc(stop.city || '') : ''}" placeholder="z. B. Bangkok"></div>
     <div class="field"><label>Ankunft</label><input type="date" id="f-arrive" value="${isEdit ? stop.arriveDate || '' : ''}"></div>
     <div class="field"><label>Abreise</label><input type="date" id="f-leave" value="${isEdit ? stop.leaveDate || '' : ''}"></div>
@@ -536,6 +574,7 @@ function openStopForm(stop) {
   `);
   document.getElementById('cancel-btn').addEventListener('click', closeModal);
   document.getElementById('geo-btn').addEventListener('click', geocodeStopFields);
+  setupCountryAutocomplete();
   document.getElementById('save-btn').addEventListener('click', () => {
     const country = document.getElementById('f-country').value.trim();
     if (!country) { alert('Bitte ein Land eingeben.'); return; }
@@ -558,6 +597,34 @@ function openStopForm(stop) {
     save();
     closeModal();
     render();
+  });
+}
+
+function setupCountryAutocomplete() {
+  const input = document.getElementById('f-country');
+  const box = document.getElementById('country-suggestions');
+  if (!input || !box) return;
+
+  function showMatches() {
+    const val = input.value.trim().toLowerCase();
+    if (!val) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    const startsWith = COUNTRIES_DE.filter(c => c.toLowerCase().startsWith(val));
+    const contains = COUNTRIES_DE.filter(c => !c.toLowerCase().startsWith(val) && c.toLowerCase().includes(val));
+    const matches = [...startsWith, ...contains].slice(0, 8);
+    if (matches.length === 0) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.innerHTML = matches.map(c => `<div class="suggestion-item" data-country="${esc(c)}">${esc(c)}</div>`).join('');
+    box.classList.remove('hidden');
+  }
+
+  input.addEventListener('input', showMatches);
+  input.addEventListener('focus', () => { if (input.value.trim()) showMatches(); });
+  input.addEventListener('blur', () => { setTimeout(() => box.classList.add('hidden'), 150); });
+  box.addEventListener('click', (ev) => {
+    const item = ev.target.closest('[data-country]');
+    if (!item) return;
+    input.value = item.dataset.country;
+    box.classList.add('hidden');
+    box.innerHTML = '';
   });
 }
 
