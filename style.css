@@ -210,3 +210,49 @@ p.view-sub { margin: 0 0 16px 0; color: var(--muted); font-size: 0.88rem; }
 
 .section-label { font-size: 0.78rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 18px 0 8px 0; }
 .section-label:first-child { margin-top: 0; }
+
+/* Route: Liste/Karte-Umschalter + Kartenansicht */
+.route-view-toggle { margin-bottom: 14px; }
+
+.map-container {
+  height: 380px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.map-hint { color: var(--muted); font-size: 0.8rem; margin: 0 0 12px 0; }
+
+.route-marker-num {
+  background: var(--primary);
+  color: white;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.8rem;
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+
+/* Koordinaten-Suche im Stationsformular */
+.geo-row { display: flex; gap: 8px; align-items: stretch; }
+.geo-row input { flex: 1; min-width: 0; }
+.btn-geo {
+  flex: none;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: none;
+  background: #eef2f2;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.85rem;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.btn-geo:disabled { opacity: 0.6; }
+.geo-status { font-size: 0.76rem; color: var(--muted); margin: 6px 0 0 0; min-height: 1em; }

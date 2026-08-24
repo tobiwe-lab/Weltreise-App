@@ -46,6 +46,8 @@ function save() {
 /* ---------- Navigation state ---------- */
 let currentView = 'dashboard';
 let currentStopId = null; // when viewing a stop's detail page
+let routeViewMode = 'list'; // 'list' | 'map'
+let routeMapInstance = null;
 
 const viewRoot = document.getElementById('view-root');
 const fab = document.getElementById('fab');
@@ -147,18 +149,104 @@ function renderDashboard() {
       <p class="card-sub">${prepDone} von ${data.prep.length} Aufgaben erledigt</p>
       <div class="progress-bar"><div class="progress-fill" style="width:${(prepDone / prepTotal) * 100}%"></div></div>
     </div>
+
+    <div class="card">
+      <p class="card-title">💾 Daten sichern</p>
+      <p class="card-sub">Alle Reisedaten als Datei sichern oder aus einer Datei wiederherstellen.</p>
+      <div class="modal-actions" style="margin-top:10px">
+        <button class="btn btn-secondary" id="export-btn">Exportieren</button>
+        <button class="btn btn-secondary" id="import-btn">Importieren</button>
+      </div>
+      <input type="file" id="import-file-input" accept="application/json,.json" class="hidden">
+    </div>
   `;
+
+  document.getElementById('export-btn').addEventListener('click', exportData);
+  document.getElementById('import-btn').addEventListener('click', () => {
+    document.getElementById('import-file-input').click();
+  });
+  document.getElementById('import-file-input').addEventListener('change', (ev) => {
+    const file = ev.target.files[0];
+    if (file) importDataFromFile(file);
+    ev.target.value = '';
+  });
+}
+
+/* ---------- Datenexport / -import ---------- */
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const stamp = new Date().toISOString().slice(0, 10);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `weltreise-backup-${stamp}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function importDataFromFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let parsed;
+    try {
+      parsed = JSON.parse(reader.result);
+    } catch (e) {
+      alert('Die Datei ist kein gültiges JSON-Backup.');
+      return;
+    }
+    if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.stops)) {
+      alert('Diese Datei sieht nicht wie ein Weltreise-Planer-Backup aus.');
+      return;
+    }
+    if (!confirm('Die aktuellen Daten in der App werden durch die Datei ersetzt. Fortfahren?')) return;
+    data = {
+      budgetTotal: Number(parsed.budgetTotal) || 0,
+      currency: typeof parsed.currency === 'string' && parsed.currency ? parsed.currency : 'CHF',
+      stops: Array.isArray(parsed.stops) ? parsed.stops : [],
+      expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
+      prep: Array.isArray(parsed.prep) ? parsed.prep : [],
+    };
+    save();
+    alert('Backup erfolgreich importiert.');
+    render();
+  };
+  reader.onerror = () => alert('Datei konnte nicht gelesen werden.');
+  reader.readAsText(file);
 }
 
 /* ---------- Route ---------- */
 
 function renderRoute() {
   const sorted = [...data.stops].sort((a, b) => (a.arriveDate || '').localeCompare(b.arriveDate || ''));
+
+  if (sorted.length === 0) {
+    viewRoot.innerHTML = `
+      <h2 class="view-title">Reiseroute</h2>
+      <p class="view-sub">Deine Stationen – tippe eine an für Details</p>
+      <div class="empty-state"><span class="big">🗺️</span>Noch keine Stationen.<br>Tippe auf ＋ um deine erste Station hinzuzufügen.</div>
+    `;
+    return;
+  }
+
+  const geoStops = sorted.filter(s => isFinite(s.lat) && isFinite(s.lon));
+
   viewRoot.innerHTML = `
     <h2 class="view-title">Reiseroute</h2>
     <p class="view-sub">Deine Stationen – tippe eine an für Details</p>
-    ${sorted.length === 0 ? `
-      <div class="empty-state"><span class="big">🗺️</span>Noch keine Stationen.<br>Tippe auf ＋ um deine erste Station hinzuzufügen.</div>
+
+    <div class="tabs route-view-toggle">
+      <button class="tab-btn ${routeViewMode === 'list' ? 'active' : ''}" data-mode="list">📋 Liste</button>
+      <button class="tab-btn ${routeViewMode === 'map' ? 'active' : ''}" data-mode="map">🗺️ Karte</button>
+    </div>
+
+    ${routeViewMode === 'map' ? `
+      <div id="route-map" class="map-container"></div>
+      ${geoStops.length === 0
+        ? `<p class="map-hint">Noch keine Station mit Koordinaten. Öffne eine Station zum Bearbeiten und tippe im Formular auf "Suchen".</p>`
+        : (sorted.length > geoStops.length ? `<p class="map-hint">${sorted.length - geoStops.length} Station(en) ohne Koordinaten werden auf der Karte nicht angezeigt.</p>` : '')}
     ` : sorted.map(s => `
       <div class="card" data-stop="${s.id}" style="cursor:pointer">
         <p class="card-title">${esc(s.city ? s.city + ', ' : '')}${esc(s.country)}</p>
@@ -167,9 +255,60 @@ function renderRoute() {
       </div>
     `).join('')}
   `;
+
   viewRoot.querySelectorAll('[data-stop]').forEach(el => {
     el.addEventListener('click', () => setView('route', { stopId: el.dataset.stop }));
   });
+  viewRoot.querySelectorAll('[data-mode]').forEach(btn => {
+    btn.addEventListener('click', () => { routeViewMode = btn.dataset.mode; renderRoute(); });
+  });
+
+  if (routeViewMode === 'map') initRouteMap(geoStops);
+}
+
+function initRouteMap(stops) {
+  const container = document.getElementById('route-map');
+  if (!container) return;
+
+  if (typeof L === 'undefined') {
+    container.outerHTML = `<div class="empty-state"><span class="big">🗺️</span>Karte konnte nicht geladen werden.<br>Dafür ist beim ersten Öffnen eine Internetverbindung nötig.</div>`;
+    return;
+  }
+
+  if (routeMapInstance) { routeMapInstance.remove(); routeMapInstance = null; }
+
+  const map = L.map(container, { scrollWheelZoom: false });
+  routeMapInstance = map;
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende',
+    maxZoom: 18,
+  }).addTo(map);
+
+  if (stops.length === 0) {
+    map.setView([20, 0], 2);
+    return;
+  }
+
+  const points = stops.map(s => [s.lat, s.lon]);
+
+  stops.forEach((s, i) => {
+    const icon = L.divIcon({
+      className: 'route-marker',
+      html: `<div class="route-marker-num">${i + 1}</div>`,
+      iconSize: [26, 26],
+      iconAnchor: [13, 13],
+    });
+    L.marker([s.lat, s.lon], { icon }).addTo(map)
+      .bindPopup(`<strong>${esc(s.city ? s.city + ', ' : '')}${esc(s.country)}</strong>${s.arriveDate ? '<br>' + fmtDate(s.arriveDate) : ''}`);
+  });
+
+  if (points.length > 1) {
+    L.polyline(points, { color: '#146c94', weight: 3, opacity: 0.7, dashArray: '6 6' }).addTo(map);
+  }
+
+  if (points.length === 1) map.setView(points[0], 6);
+  else map.fitBounds(points, { padding: [30, 30] });
 }
 
 function renderStopDetail(stopId) {
@@ -375,21 +514,35 @@ function openStopForm(stop) {
     <div class="field"><label>Ankunft</label><input type="date" id="f-arrive" value="${isEdit ? stop.arriveDate || '' : ''}"></div>
     <div class="field"><label>Abreise</label><input type="date" id="f-leave" value="${isEdit ? stop.leaveDate || '' : ''}"></div>
     <div class="field"><label>Länderinfos / Notizen</label><textarea id="f-notes" placeholder="Visum-Hinweise, Klima, Sprache, ...">${isEdit ? esc(stop.notes || '') : ''}</textarea></div>
+    <div class="field">
+      <label>Koordinaten (für Kartenansicht)</label>
+      <div class="geo-row">
+        <input id="f-lat" type="number" step="any" value="${isEdit && isFinite(stop.lat) ? stop.lat : ''}" placeholder="Breitengrad">
+        <input id="f-lon" type="number" step="any" value="${isEdit && isFinite(stop.lon) ? stop.lon : ''}" placeholder="Längengrad">
+        <button type="button" class="btn-geo" id="geo-btn">📍 Suchen</button>
+      </div>
+      <p class="geo-status" id="geo-status"></p>
+    </div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="cancel-btn">Abbrechen</button>
       <button class="btn btn-primary" id="save-btn">Speichern</button>
     </div>
   `);
   document.getElementById('cancel-btn').addEventListener('click', closeModal);
+  document.getElementById('geo-btn').addEventListener('click', geocodeStopFields);
   document.getElementById('save-btn').addEventListener('click', () => {
     const country = document.getElementById('f-country').value.trim();
     if (!country) { alert('Bitte ein Land eingeben.'); return; }
+    const latVal = parseFloat(document.getElementById('f-lat').value);
+    const lonVal = parseFloat(document.getElementById('f-lon').value);
     const payload = {
       country,
       city: document.getElementById('f-city').value.trim(),
       arriveDate: document.getElementById('f-arrive').value,
       leaveDate: document.getElementById('f-leave').value,
       notes: document.getElementById('f-notes').value.trim(),
+      lat: isFinite(latVal) ? latVal : undefined,
+      lon: isFinite(lonVal) ? lonVal : undefined,
     };
     if (isEdit) {
       Object.assign(stop, payload);
@@ -400,6 +553,34 @@ function openStopForm(stop) {
     closeModal();
     render();
   });
+}
+
+function geocodeStopFields() {
+  const country = document.getElementById('f-country').value.trim();
+  const city = document.getElementById('f-city').value.trim();
+  const status = document.getElementById('geo-status');
+  const btn = document.getElementById('geo-btn');
+  if (!country) { status.textContent = 'Bitte zuerst ein Land eingeben.'; return; }
+
+  const query = [city, country].filter(Boolean).join(', ');
+  status.textContent = 'Suche …';
+  btn.disabled = true;
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`)
+    .then(res => res.json())
+    .then(results => {
+      if (!results || results.length === 0) {
+        status.textContent = 'Nichts gefunden – bitte Koordinaten manuell eintragen.';
+        return;
+      }
+      document.getElementById('f-lat').value = parseFloat(results[0].lat).toFixed(5);
+      document.getElementById('f-lon').value = parseFloat(results[0].lon).toFixed(5);
+      status.textContent = `Gefunden: ${results[0].display_name}`;
+    })
+    .catch(() => {
+      status.textContent = 'Suche fehlgeschlagen (keine Internetverbindung?). Koordinaten manuell eintragen.';
+    })
+    .finally(() => { btn.disabled = false; });
 }
 
 function openStopSubItemForm() {
