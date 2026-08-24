@@ -1,4 +1,4 @@
-const CACHE_NAME = 'weltreise-cache-v5';
+const CACHE_NAME = 'weltreise-cache-v6';
 const ASSETS = [
   './',
   './index.html',

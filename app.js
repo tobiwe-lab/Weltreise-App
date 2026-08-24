@@ -7,7 +7,7 @@ const STORAGE_KEY = 'weltreiseData';
 
 // Zeitstempel des letzten Code-Updates – wird von Claude bei jeder Änderung
 // von Hand angepasst, damit auf der Übersicht sichtbar ist, welche Version läuft.
-const APP_BUILD = '24.08.2026 20:45';
+const APP_BUILD = '24.08.2026 21:13';
 
 const COUNTRIES_DE = [
   'Afghanistan', 'Ägypten', 'Albanien', 'Algerien', 'Andorra', 'Angola', 'Antigua und Barbuda',
@@ -771,8 +771,32 @@ setView('dashboard');
 /* ---------- Offline / Service Worker ---------- */
 
 if ('serviceWorker' in navigator) {
+  let swReloading = false;
+
+  // updateViaCache: 'none' zwingt den Browser, service-worker.js bei jeder Prüfung
+  // wirklich frisch vom Server zu laden statt eine evtl. veraltete HTTP-Cache-Kopie
+  // zu benutzen. Ohne das prüfen manche Browser (v.a. iOS Safari als Homescreen-App)
+  // teils nur alle 24h automatisch auf eine neue Version.
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js').catch(() => {});
+    navigator.serviceWorker.register('service-worker.js', { updateViaCache: 'none' })
+      .then((reg) => {
+        reg.update().catch(() => {});
+        // Beim Zurückkehren aus dem Hintergrund (z.B. App auf iPhone neu geöffnet)
+        // aktiv nach einer neueren Version fragen, statt nur passiv zu warten.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      })
+      .catch(() => {});
+  });
+
+  // Sobald ein neuer Service Worker die Kontrolle übernimmt (nachdem er via
+  // skipWaiting()/clients.claim() aktiv wurde), die Seite einmal automatisch neu
+  // laden, damit wirklich der neue app.js/index.html-Stand angezeigt wird.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (swReloading) return;
+    swReloading = true;
+    window.location.reload();
   });
 }
 
